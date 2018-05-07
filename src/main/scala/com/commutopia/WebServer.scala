@@ -6,6 +6,7 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSupport}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
@@ -18,9 +19,11 @@ import scala.util.{Random, Success}
 import scala.io.StdIn
 
 case class Person(name: String, age: Int)
+case class CsvLine(words: List[String])
 
 trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val personFormat = jsonFormat2(Person)
+  implicit val personFormat = jsonFormat2(Person.apply)
+  implicit val csvFormat = jsonFormat1(CsvLine)
 }
 
 object WebServer extends JsonSupport {
@@ -37,6 +40,10 @@ object WebServer extends JsonSupport {
 
     val csvFile = Paths.get("files/results.csv")
     val fileSource: Source[ByteString, Future[IOResult]] = FileIO.fromPath(csvFile)
+    val lineSource: Source[CsvLine, Future[IOResult]] =
+      fileSource.via(Framing.delimiter(ByteString("\r\n"), maximumFrameLength = 100, allowTruncation = true))
+      .map(_.utf8String)
+      .map(line => CsvLine(line.split(", ").toList))
 
     val futureExec = Future {
       Random.nextInt()
@@ -61,7 +68,7 @@ object WebServer extends JsonSupport {
       } ~
       futureResource(futureExec) ~
       personResource() ~
-      fileResource(fileSource)
+      fileResource(fileSource, lineSource)
 
     val bindingFuture = Http().bindAndHandle(route, "localhost", 8080)
 
@@ -93,7 +100,12 @@ object WebServer extends JsonSupport {
     }
   }
 
-  private def fileResource(fileSource: Source[ByteString, Future[IOResult]]): Route = {
+  private def fileResource(
+                            fileSource: Source[ByteString, Future[IOResult]],
+                            lineSource: Source[CsvLine, Future[IOResult]]): Route = {
+
+    implicit val jsonStreamingSupport: JsonEntityStreamingSupport = EntityStreamingSupport.json()
+    
     path("file") {
       get {
         complete {
@@ -101,6 +113,13 @@ object WebServer extends JsonSupport {
             ContentTypes.`text/plain(UTF-8)`,
             fileSource
           )
+        }
+      }
+    } ~
+    path ("line") {
+      get {
+        complete {
+          lineSource
         }
       }
     }
