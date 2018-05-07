@@ -1,4 +1,6 @@
+package com.commutopia
 
+import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.stream.scaladsl._
@@ -8,7 +10,7 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorMaterializer, IOResult}
 import spray.json.DefaultJsonProtocol
 
 import scala.concurrent.Future
@@ -33,6 +35,9 @@ object WebServer extends JsonSupport {
     val numbers = Source.fromIterator(() =>
       Iterator.continually(Random.nextInt()))
 
+    val csvFile = Paths.get("files/results.csv")
+    val fileSource: Source[ByteString, Future[IOResult]] = FileIO.fromPath(csvFile)
+
     val futureExec = Future {
       Random.nextInt()
     }
@@ -55,7 +60,8 @@ object WebServer extends JsonSupport {
         }
       } ~
       futureResource(futureExec) ~
-      personResource()
+      personResource() ~
+      fileResource(fileSource)
 
     val bindingFuture = Http().bindAndHandle(route, "localhost", 8080)
 
@@ -82,6 +88,19 @@ object WebServer extends JsonSupport {
       get {
         complete {
           Person("erkin", 32)
+        }
+      }
+    }
+  }
+
+  private def fileResource(fileSource: Source[ByteString, Future[IOResult]]): Route = {
+    path("file") {
+      get {
+        complete {
+          HttpEntity(
+            ContentTypes.`text/plain(UTF-8)`,
+            fileSource
+          )
         }
       }
     }
