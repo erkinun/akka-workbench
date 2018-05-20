@@ -1,6 +1,6 @@
 package com.commutopia
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Props}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.stream.ActorMaterializer
@@ -20,12 +20,14 @@ object WebServer extends JsonSupport {
 
   def main(args: Array[String]): Unit = {
 
-    implicit val system = ActorSystem("my-system")
+    implicit val system = ActorSystem("sharding")
+    val personActor = system.actorOf(Props[PersonActor])
     implicit val materializer = ActorMaterializer()
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext = system.dispatcher
 
-    val bindingFuture = Http().bindAndHandle(HTTPServer.route, "localhost", 8080)
+    val server = new HTTPServer(personActor)
+    val bindingFuture = Http().bindAndHandle(server.route, "localhost", 8080)
 
     println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
     StdIn.readLine() // let it run until user presses return

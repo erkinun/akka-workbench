@@ -2,18 +2,21 @@ package com.commutopia
 
 import java.nio.file.Paths
 
+import akka.actor.ActorRef
 import akka.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSupport}
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.server.Directives._
+import akka.pattern.ask
 import akka.stream.IOResult
 import akka.stream.scaladsl.{FileIO, Framing, Source}
 import akka.util.ByteString
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 import scala.util.{Random, Success}
 
-object HTTPServer extends JsonSupport  {
+class HTTPServer(personActor: ActorRef) extends JsonSupport  {
 
   implicit val ec = ExecutionContext.global
   
@@ -74,7 +77,8 @@ object HTTPServer extends JsonSupport  {
     path("person") {
       get {
         complete {
-          Person("erkin", 32)
+          import akka.http.scaladsl.marshalling.GenericMarshallers.futureMarshaller
+          personActor.ask(PersonRequest("erkin"))(5 seconds).mapTo[PersonResponse].map(p => Person(p.name, p.age))
         }
       }
     }
@@ -86,18 +90,18 @@ object HTTPServer extends JsonSupport  {
         complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, "<h1>Say hello to akka-http</h1>"))
       }
     } ~
-      path("random") {
-        get {
-          complete(
-            HttpEntity(
-              ContentTypes.`text/plain(UTF-8)`,
-              // transform each number to a chunk of bytes
-              numbers.map(n => ByteString(s"$n\n"))
-            )
+    path("random") {
+      get {
+        complete(
+          HttpEntity(
+            ContentTypes.`text/plain(UTF-8)`,
+            // transform each number to a chunk of bytes
+            numbers.map(n => ByteString(s"$n\n"))
           )
-        }
-      } ~
-      futureResource(futureExec) ~
-      personResource ~
-      fileResource
+        )
+      }
+    } ~
+    futureResource(futureExec) ~
+    personResource ~
+    fileResource
 }
