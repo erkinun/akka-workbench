@@ -38,13 +38,6 @@ object WebServer extends JsonSupport {
     val numbers = Source.fromIterator(() =>
       Iterator.continually(Random.nextInt()))
 
-    val csvFile = Paths.get("files/results.csv")
-    val fileSource: Source[ByteString, Future[IOResult]] = FileIO.fromPath(csvFile)
-    val lineSource: Source[CsvLine, Future[IOResult]] =
-      fileSource.via(Framing.delimiter(ByteString("\r\n"), maximumFrameLength = 100, allowTruncation = true))
-      .map(_.utf8String)
-      .map(line => CsvLine(line.split(", ").toList))
-
     val futureExec = Future {
       Random.nextInt()
     }
@@ -68,7 +61,7 @@ object WebServer extends JsonSupport {
       } ~
       futureResource(futureExec) ~
       personResource() ~
-      fileResource(fileSource, lineSource)
+      HTTP.fileResource
 
     val bindingFuture = Http().bindAndHandle(route, "localhost", 8080)
 
@@ -106,28 +99,4 @@ object WebServer extends JsonSupport {
     }
   }
 
-  private def fileResource(
-                            fileSource: Source[ByteString, Future[IOResult]],
-                            lineSource: Source[CsvLine, Future[IOResult]]): Route = {
-
-    implicit val jsonStreamingSupport: JsonEntityStreamingSupport = EntityStreamingSupport.json()
-    
-    path("file") {
-      get {
-        complete {
-          HttpEntity(
-            ContentTypes.`text/plain(UTF-8)`,
-            fileSource
-          )
-        }
-      }
-    } ~
-    path ("line") {
-      get {
-        complete {
-          lineSource
-        }
-      }
-    }
-  }
 }
