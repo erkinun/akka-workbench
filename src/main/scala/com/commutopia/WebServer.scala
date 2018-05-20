@@ -14,7 +14,7 @@ import akka.http.scaladsl.server.Route
 import akka.stream.{ActorMaterializer, IOResult}
 import spray.json.DefaultJsonProtocol
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Random, Success}
 import scala.io.StdIn
 
@@ -79,12 +79,18 @@ object WebServer extends JsonSupport {
       .onComplete(_ => system.terminate()) // and shutdown when done
   }
 
-  private def futureResource(futureExec: Future[Int]): Route = {
+  private def futureResource(futureExec: Future[Int])(implicit ec: ExecutionContext): Route = {
     path("future") {
       get {
         onComplete(futureExec) {
           case Success(value) => complete(s"result is $value")
         }
+      }
+    } ~
+    path("futureDirect") {
+      get {
+        import akka.http.scaladsl.marshalling.GenericMarshallers.futureMarshaller
+        complete(Future(Person("hede", 52)))
       }
     }
   }
